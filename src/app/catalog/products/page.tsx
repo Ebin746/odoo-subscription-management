@@ -16,6 +16,12 @@ export default async function ProductsPage() {
     prisma.tax.findMany({ where: { isActive: true } }),
   ]);
 
+  const serializedTaxes = taxes.map((t) => ({
+    id: t.id,
+    name: t.name,
+    ratePercent: Number(t.ratePercent),
+  }));
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <CatalogNav />
@@ -31,7 +37,7 @@ export default async function ProductsPage() {
               Admin-controlled product catalog with sales/cost prices and variant pricing rules
             </p>
           </div>
-          <ProductModal taxes={taxes} />
+          <ProductModal taxes={serializedTaxes} />
         </div>
 
         {/* Products Grid */}

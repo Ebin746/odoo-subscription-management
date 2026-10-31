@@ -84,7 +84,19 @@ export default async function SubscriptionDetailPage({ params }: Props) {
           </div>
 
           {/* Interactive State & Action Bar */}
-          <SubscriptionActions subscription={sub} />
+          <SubscriptionActions
+            subscription={{
+              id: sub.id,
+              status: sub.status,
+              isPaused: sub.isPaused,
+              plan: {
+                billingPeriod: sub.plan.billingPeriod,
+                allowPause: sub.plan.allowPause,
+                allowRenew: sub.plan.allowRenew,
+                allowEarlyClose: sub.plan.allowEarlyClose,
+              },
+            }}
+          />
         </div>
 
         {/* Info Grid */}

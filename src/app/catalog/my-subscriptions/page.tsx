@@ -27,6 +27,8 @@ export default async function MySubscriptionsPage() {
       })
     : [];
 
+  const plainSubscriptions = JSON.parse(JSON.stringify(subscriptions));
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <CatalogNav />
@@ -62,7 +64,7 @@ export default async function MySubscriptionsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {subscriptions.map((sub) => (
+            {plainSubscriptions.map((sub: any) => (
               <CustomerSubCard key={sub.id} subscription={sub} />
             ))}
           </div>

@@ -24,6 +24,25 @@ export default async function QuotationTemplatesPage() {
     prisma.user.findMany({ where: { role: 'CUSTOMER' }, select: { id: true, name: true, email: true } }),
   ]);
 
+  const serializedPlans = plans.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: Number(p.price),
+    billingPeriod: p.billingPeriod,
+  }));
+
+  const serializedProducts = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    salesPrice: Number(p.salesPrice),
+    variants: p.variants.map((v) => ({
+      id: v.id,
+      attribute: v.attribute,
+      value: v.value,
+      extraPrice: Number(v.extraPrice),
+    })),
+  }));
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <CatalogNav />
@@ -39,7 +58,7 @@ export default async function QuotationTemplatesPage() {
               Admin-created bundles with pre-configured plans and lines. Sales reps start quotes with 1 click.
             </p>
           </div>
-          <TemplateModal plans={plans} products={products} />
+          <TemplateModal plans={serializedPlans} products={serializedProducts} />
         </div>
 
         {/* Templates Grid */}

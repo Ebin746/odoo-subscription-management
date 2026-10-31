@@ -16,12 +16,20 @@ export interface MailInput {
   attachments?: MailAttachment[] | SendMailOptions['attachments'];
 }
 
+// EMAIL_USER / EMAIL_PASS (Gmail app password) take precedence over the generic SMTP_* settings.
+function isGmailConfigured(): boolean {
+  return Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+}
+
 function isSmtpConfigured(): boolean {
-  return Boolean(
-    process.env.SMTP_HOST &&
-      process.env.SMTP_PORT &&
-      process.env.SMTP_USER &&
-      process.env.SMTP_PASS
+  return (
+    isGmailConfigured() ||
+    Boolean(
+      process.env.SMTP_HOST &&
+        process.env.SMTP_PORT &&
+        process.env.SMTP_USER &&
+        process.env.SMTP_PASS
+    )
   );
 }
 
@@ -29,20 +37,30 @@ let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter(): nodemailer.Transporter {
   if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    transporter = isGmailConfigured()
+      ? nodemailer.createTransport({
+          host: 'smtp.gmail.com',
+          port: 465,
+          secure: true,
+          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+        })
+      : nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT) || 587,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
   }
   return transporter;
 }
 
 export async function sendMail(input: MailInput): Promise<void> {
-  const from = process.env.MAIL_FROM || 'noreply@brightloop.com';
+  const from =
+    process.env.MAIL_FROM ||
+    (isGmailConfigured() ? process.env.EMAIL_USER : undefined) ||
+    'noreply@brightloop.com';
 
   if (!isSmtpConfigured()) {
     console.log('─── [sendMail fallback — SMTP not configured] ───');

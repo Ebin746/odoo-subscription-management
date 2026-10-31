@@ -8,6 +8,9 @@ import { billingRouters, billingLookupsRouter } from './modules/billing';
 import { paymentsModuleRouter } from './modules/payments';
 import { authRouter, usersRouter, lookupsRouter as authLookupsRouter } from './modules/auth';
 import { errorHandler } from './shared/errorHandler';
+import { startWorkers, closeQueues } from './shared/redis/queue';
+import { closeRedis } from './shared/redis/client';
+import { startScheduler } from './shared/scheduler';
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -43,10 +46,25 @@ app.use('/api/users', usersRouter);
 // Must be mounted last
 app.use(errorHandler);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`🚀 Backend server running on http://localhost:${port}`);
   console.log(`   - Lookups: http://localhost:${port}/api/lookups/products`);
   console.log(`   - Catalog: http://localhost:${port}/api/catalog/products`);
   console.log(`   - Payments: http://localhost:${port}/api/payments`);
   console.log(`   - Finance Dashboard: http://localhost:${port}/api/payments/dashboard`);
 });
+
+// Background work: queue workers (when Redis is available) and the daily job schedule.
+(async () => {
+  await startWorkers();
+  await startScheduler();
+})().catch((err) => console.error('[Startup] background services failed:', err));
+
+async function shutdown() {
+  server.close();
+  await closeQueues();
+  await closeRedis();
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

@@ -11,7 +11,9 @@
     "prisma:generate": "prisma generate --schema=backend/prisma/schema.prisma",
     "prisma:push": "prisma db push --schema=backend/prisma/schema.prisma",
     "seed:catalog": "tsx backend/src/modules/catalog/seed.ts",
-    "seed:billing": "tsx backend/src/modules/billing/seed.ts"
+    "seed:billing": "tsx backend/src/modules/billing/seed.ts",
+    "seed:payments": "tsx backend/src/modules/payments/seed.ts",
+    "seed:all": "tsx backend/src/modules/catalog/seed.ts && tsx backend/src/modules/billing/seed.ts && tsx backend/src/modules/payments/seed.ts"
   },
   "prisma": {
     "schema": "backend/prisma/schema.prisma"

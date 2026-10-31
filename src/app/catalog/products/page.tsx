@@ -4,6 +4,8 @@ import { Package, Plus, DollarSign, Tag, Info } from 'lucide-react';
 import { ProductModal } from './ProductModal';
 
 
+export const dynamic = 'force-dynamic';
+
 export default async function ProductsPage() {
   const [products, taxes] = await Promise.all([
     prisma.product.findMany({

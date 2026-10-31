@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import { catalogModuleRouter, lookupsRouter } from './modules/catalog';
 import { billingRouters, billingLookupsRouter } from './modules/billing';
+import { paymentsModuleRouter } from './modules/payments';
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -29,8 +30,13 @@ app.use('/api/taxes', billingRouters.taxesRouter);
 app.use('/api/discounts', billingRouters.discountsRouter);
 app.use('/api/invoices', billingRouters.invoicesRouter);
 
+// Payments & Reporting Slice (P4)
+app.use('/api/payments', paymentsModuleRouter);
+
 app.listen(port, () => {
   console.log(`🚀 Backend server running on http://localhost:${port}`);
   console.log(`   - Lookups: http://localhost:${port}/api/lookups/products`);
   console.log(`   - Catalog: http://localhost:${port}/api/catalog/products`);
+  console.log(`   - Payments: http://localhost:${port}/api/payments`);
+  console.log(`   - Finance Dashboard: http://localhost:${port}/api/payments/dashboard`);
 });

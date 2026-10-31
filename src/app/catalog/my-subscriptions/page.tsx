@@ -4,6 +4,8 @@ import { UserCheck, Shield, Repeat, Clock } from 'lucide-react';
 import { CustomerSubCard } from './CustomerSubCard';
 
 
+export const dynamic = 'force-dynamic';
+
 export default async function MySubscriptionsPage() {
   // Query customer subscriptions for the demo customer (Acme Corp)
   const customer = await prisma.user.findFirst({

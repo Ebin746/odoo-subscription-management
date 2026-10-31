@@ -4,6 +4,7 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import { catalogModuleRouter, lookupsRouter } from './modules/catalog';
+import { billingRouters, billingLookupsRouter } from './modules/billing';
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -18,9 +19,15 @@ app.get('/api/health', (_req: express.Request, res: express.Response) => {
 
 // Lookups (Published for P1, P3, P4)
 app.use('/api/lookups', lookupsRouter);
+app.use('/api/lookups', billingLookupsRouter);
 
 // Catalog Slice (P2)
 app.use('/api/catalog', catalogModuleRouter);
+
+// Billing Slice (P3)
+app.use('/api/taxes', billingRouters.taxesRouter);
+app.use('/api/discounts', billingRouters.discountsRouter);
+app.use('/api/invoices', billingRouters.invoicesRouter);
 
 app.listen(port, () => {
   console.log(`🚀 Backend server running on http://localhost:${port}`);

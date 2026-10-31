@@ -1,7 +1,6 @@
 import { BillingPeriod, DiscountScope, DiscountType, InvoiceLineKind, PaymentTerms, Prisma, SubscriptionStatus } from '@prisma/client';
 import { prisma } from '../../shared/db';
 import { calculateLine } from '../../shared/pricing';
-import { registerDailyJob } from '../../shared/scheduler';
 
 const CHUNK_SIZE = 200; // subscriptions loaded per database round trip
 const PARALLEL = 10; // subscriptions billed concurrently inside a chunk
@@ -273,7 +272,75 @@ async function billSubscription(
   return { created, skipped };
 }
 
-// Bills every due period of every active, unpaused subscription. Safe to run repeatedly and in parallel.
+const dueWhere = (runDate: Date): Prisma.SubscriptionWhereInput => ({
+  status: SubscriptionStatus.ACTIVE,
+  isPaused: false,
+  startDate: { lte: runDate },
+  lines: { some: {} },
+});
+
+// Ids of the subscriptions to bill, in pages. Only ids are loaded here; the full rows are loaded per chunk.
+export async function* subscriptionIdPages(runDate: Date, pageSize = CHUNK_SIZE): AsyncGenerator<string[]> {
+  let cursor: string | undefined;
+  for (;;) {
+    const rows = await prisma.subscription.findMany({
+      where: dueWhere(runDate),
+      select: { id: true },
+      orderBy: { id: 'asc' },
+      take: pageSize,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+    if (rows.length === 0) return;
+    cursor = rows[rows.length - 1].id;
+    yield rows.map((r) => r.id);
+    if (rows.length < pageSize) return;
+  }
+}
+
+export interface ChunkResult {
+  checked: number;
+  created: number;
+  skipped: number;
+  failed: { subscriptionId: string; error: string }[];
+}
+
+// Bills one chunk of subscriptions. Safe to repeat: the unique (subscriptionId, periodStart) stops double billing,
+// so a queue retry of a half-finished chunk only creates what is still missing.
+export async function billChunk(ids: string[], runDate: Date): Promise<ChunkResult> {
+  const result: ChunkResult = { checked: 0, created: 0, skipped: 0, failed: [] };
+  if (ids.length === 0) return result;
+
+  const chunk: SubscriptionForBilling[] = await prisma.subscription.findMany({
+    where: { id: { in: ids }, ...dueWhere(runDate) },
+    include: { customer: true, plan: true, lines: { include: { product: true, tax: true } } },
+    orderBy: { id: 'asc' },
+  });
+
+  // Valid discounts are loaded once per chunk, not once per subscription.
+  const discounts = await prisma.discount.findMany({
+    where: { isActive: true, startDate: { lte: runDate }, endDate: { gte: runDate } },
+    include: { targets: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  for (let i = 0; i < chunk.length; i += PARALLEL) {
+    const batch = chunk.slice(i, i + PARALLEL);
+    const outcomes = await Promise.allSettled(batch.map((sub) => billSubscription(sub, runDate, discounts)));
+    outcomes.forEach((outcome, idx) => {
+      result.checked++;
+      if (outcome.status === 'fulfilled') {
+        result.created += outcome.value.created;
+        result.skipped += outcome.value.skipped;
+      } else {
+        result.failed.push({ subscriptionId: batch[idx].id, error: String(outcome.reason?.message || outcome.reason) });
+      }
+    });
+  }
+  return result;
+}
+
+// Bills every due period of every active, unpaused subscription, here and now (no queue).
+// Safe to run repeatedly and in parallel.
 export async function runBilling(runDateInput: Date = new Date()): Promise<BillingResult> {
   const runDate = startOfUtcDay(runDateInput);
   const result: BillingResult = {
@@ -284,44 +351,12 @@ export async function runBilling(runDateInput: Date = new Date()): Promise<Billi
     failed: [],
   };
 
-  let cursor: string | undefined;
-  for (;;) {
-    const chunk: SubscriptionForBilling[] = await prisma.subscription.findMany({
-      where: {
-        status: SubscriptionStatus.ACTIVE,
-        isPaused: false,
-        startDate: { lte: runDate },
-        lines: { some: {} },
-      },
-      include: { customer: true, plan: true, lines: { include: { product: true, tax: true } } },
-      orderBy: { id: 'asc' },
-      take: CHUNK_SIZE,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-    });
-    if (chunk.length === 0) break;
-    cursor = chunk[chunk.length - 1].id;
-
-    // Valid discounts are loaded once per chunk, not once per subscription.
-    const discounts = await prisma.discount.findMany({
-      where: { isActive: true, startDate: { lte: runDate }, endDate: { gte: runDate } },
-      include: { targets: true },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    for (let i = 0; i < chunk.length; i += PARALLEL) {
-      const batch = chunk.slice(i, i + PARALLEL);
-      const outcomes = await Promise.allSettled(batch.map((sub) => billSubscription(sub, runDate, discounts)));
-      outcomes.forEach((outcome, idx) => {
-        result.subscriptionsChecked++;
-        if (outcome.status === 'fulfilled') {
-          result.invoicesCreated += outcome.value.created;
-          result.skippedExisting += outcome.value.skipped;
-        } else {
-          result.failed.push({ subscriptionId: batch[idx].id, error: String(outcome.reason?.message || outcome.reason) });
-        }
-      });
-    }
-    if (chunk.length < CHUNK_SIZE) break;
+  for await (const ids of subscriptionIdPages(runDate)) {
+    const chunk = await billChunk(ids, runDate);
+    result.subscriptionsChecked += chunk.checked;
+    result.invoicesCreated += chunk.created;
+    result.skippedExisting += chunk.skipped;
+    result.failed.push(...chunk.failed);
   }
 
   console.log(
@@ -329,6 +364,3 @@ export async function runBilling(runDateInput: Date = new Date()): Promise<Billi
   );
   return result;
 }
-
-// Register with daily scheduler
-registerDailyJob('runBilling', () => runBilling());

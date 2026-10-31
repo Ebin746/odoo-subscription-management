@@ -2,8 +2,9 @@ import { Router, Request, Response } from 'express';
 import { InvoiceStatus } from '@prisma/client';
 import { prisma } from '../../shared/db';
 import { requireAuth, requireRole } from '../../shared/auth';
-import { sendMail } from '../../shared/mailer';
 import { runBilling } from './billing';
+import { getActiveBillingRunId, getBillingRun, startQueuedBilling } from './billingRun';
+import { sendInvoiceEmailQueued } from './mailJobs';
 import { renderInvoicePdf } from './pdf';
 
 export const invoicesRouter = Router();
@@ -84,13 +85,40 @@ invoicesRouter.get('/mine', requireAuth, async (req: Request, res: Response) => 
   }
 });
 
-// POST /api/invoices/run-billing - "Run billing now"
+// POST /api/invoices/run-billing - "Run billing now". With Redis the run is queued and answers 202 with a run id
+// to follow; without it the run happens here and the result comes back directly.
 invoicesRouter.post('/run-billing', requireRole('ADMIN', 'STAFF'), async (_req: Request, res: Response) => {
   try {
+    const started = await startQueuedBilling();
+    if (started) {
+      res.status(202).json({ data: { queued: true, runId: started.runId, alreadyRunning: started.alreadyRunning }, error: null });
+      return;
+    }
     const result = await runBilling();
     res.json({ data: result, error: null });
   } catch (err: any) {
     fail(res, 500, err.message || 'Billing run failed');
+  }
+});
+
+// GET /api/invoices/run-billing/active - the run in progress, if any (so the screen can pick it up again)
+invoicesRouter.get('/run-billing/active', requireRole('ADMIN', 'STAFF'), async (_req: Request, res: Response) => {
+  try {
+    const runId = await getActiveBillingRunId();
+    res.json({ data: runId ? await getBillingRun(runId) : null, error: null });
+  } catch (err: any) {
+    fail(res, 500, err.message || 'Failed to read billing status');
+  }
+});
+
+// GET /api/invoices/run-billing/:runId - progress and totals of a queued run
+invoicesRouter.get('/run-billing/:runId', requireRole('ADMIN', 'STAFF'), async (req: Request, res: Response) => {
+  try {
+    const run = await getBillingRun(req.params.runId);
+    if (!run) return fail(res, 404, 'Billing run not found');
+    res.json({ data: run, error: null });
+  } catch (err: any) {
+    fail(res, 500, err.message || 'Failed to read billing status');
   }
 });
 
@@ -151,27 +179,17 @@ invoicesRouter.post('/:id/cancel', requireRole('ADMIN', 'STAFF'), async (req: Re
   }
 });
 
-// POST /api/invoices/:id/send - Email the invoice (PDF attached) to the customer
+// POST /api/invoices/:id/send - Email the invoice (PDF attached) to the customer.
+// With Redis the email is queued (and retried if the mail server fails); the invoice is marked sent once it goes out.
 invoicesRouter.post('/:id/send', requireRole('ADMIN', 'STAFF'), async (req: Request, res: Response) => {
   try {
-    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, include: { lines: true } });
+    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { id: true, status: true } });
     if (!invoice) return fail(res, 404, 'Invoice not found');
     if (invoice.status === InvoiceStatus.CANCELLED) return fail(res, 409, 'A cancelled invoice cannot be sent');
 
-    const pdf = await renderInvoicePdf(invoice);
-    await sendMail({
-      to: invoice.customerEmail,
-      subject: `Invoice ${invoice.number} from Brightloop Software`,
-      text: `Hello ${invoice.customerName},\n\nPlease find invoice ${invoice.number} attached. Total due: ${Number(invoice.total).toFixed(2)}, payable by ${invoice.dueDate.toISOString().slice(0, 10)}.\n\nBrightloop Software`,
-      attachments: [{ filename: `${invoice.number}.pdf`, content: pdf, contentType: 'application/pdf' }],
-    });
-
-    const updated = await prisma.invoice.update({
-      where: { id: invoice.id },
-      data: { sentAt: new Date() },
-      include: detailInclude,
-    });
-    res.json({ data: updated, error: null });
+    const queued = await sendInvoiceEmailQueued(invoice.id);
+    const updated = await prisma.invoice.findUnique({ where: { id: invoice.id }, include: detailInclude });
+    res.status(queued ? 202 : 200).json({ data: { ...updated, queued }, error: null });
   } catch (err: any) {
     fail(res, 500, err.message || 'Failed to send invoice');
   }

@@ -47,6 +47,13 @@ function msUntilHour(hour: number): number {
 export async function startScheduler(): Promise<void> {
   const queue = redisIfReady() ? getQueue(DAILY_QUEUE) : null;
   if (queue) {
+    // Drop schedules of jobs that no longer exist, so they do not fail every night
+    for (const existing of await queue.getJobSchedulers()) {
+      if (existing.key.startsWith('daily:') && !jobs.has(existing.key.slice('daily:'.length))) {
+        await queue.removeJobScheduler(existing.key);
+        console.log(`[Scheduler] removed stale schedule ${existing.key}`);
+      }
+    }
     for (const name of jobs.keys()) {
       await queue.upsertJobScheduler(`daily:${name}`, { pattern: CRON }, { name: 'run', data: { job: name }, opts: { attempts: 3, backoff: { type: 'exponential', delay: 60_000 } } });
       console.log(`[Scheduler] ${name} scheduled via Redis (${CRON})`);

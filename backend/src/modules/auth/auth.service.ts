@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../shared/db';
 import { AppError } from '../../shared/errors';
-import { sendMail } from '../../shared/mailer';
+import { queueMail } from '../../shared/mailQueue';
 import type { Role } from '../../shared/auth';
 
 export interface SafeUser {
@@ -160,7 +160,7 @@ export const authService = {
     const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
     const resetLink = `${appUrl}/auth/reset-password?token=${rawToken}`;
 
-    await sendMail({
+    await queueMail({
       to: user.email,
       subject: 'Reset your Brightloop password',
       text: `Reset your password by clicking this link: ${resetLink}`,

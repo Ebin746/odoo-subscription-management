@@ -16,8 +16,11 @@ export function InvoiceActions({ id, status }: { id: string; status: string }) {
     setBusy(action);
     setMessage(null);
     try {
-      await api(`/api/invoices/${id}/${action}`, 'POST');
-      setMessage({ ok: true, text: action === 'send' ? 'Invoice emailed to the customer' : `Invoice ${action}ed` });
+      const res = await api<{ queued?: boolean }>(`/api/invoices/${id}/${action}`, 'POST');
+      setMessage({
+        ok: true,
+        text: action === 'send' ? (res?.queued ? 'Invoice queued for sending' : 'Invoice emailed to the customer') : `Invoice ${action}ed`,
+      });
       router.refresh();
     } catch (err: any) {
       setMessage({ ok: false, text: err.message });

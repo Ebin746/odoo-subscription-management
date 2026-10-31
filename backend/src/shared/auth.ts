@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from './db';
+import { getAuthUser, isTokenDenied } from './redis/session';
 
 export type Role = 'ADMIN' | 'STAFF' | 'CUSTOMER';
 
@@ -37,11 +38,19 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     try {
       const decoded = jwt.verify(token, secret) as JwtPayload;
 
-      // Verify user is still active in database
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
-        select: { id: true, role: true, email: true, isActive: true },
-      });
+      // A token that was logged out stays dead until it expires
+      if (await isTokenDenied(token)) {
+        res.status(401).json({ data: null, error: 'Session has ended, please log in again' });
+        return;
+      }
+
+      // Verify user is still active (cached for a minute; changes to the user clear the cache)
+      const user = await getAuthUser(decoded.userId, () =>
+        prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: { id: true, role: true, email: true, isActive: true },
+        })
+      );
 
       if (!user || !user.isActive) {
         res.status(401).json({ data: null, error: 'Account is deactivated or does not exist' });

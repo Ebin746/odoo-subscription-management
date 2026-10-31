@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { InvoiceStatus, PaymentMethod } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { invalidate } from '@backend/shared/redis/cache';
+import { idempotentJson, limitOr429 } from '@/lib/redisHttp';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -14,8 +16,7 @@ function isStaff(req: NextRequest): boolean {
 const forbidden = () =>
   NextResponse.json({ data: null, error: 'Forbidden: insufficient role privileges' }, { status: 403 });
 
-export async function POST(req: NextRequest) {
-  if (!isStaff(req)) return forbidden();
+async function recordPayment(req: NextRequest) {
   try {
     const body = await req.json();
     const { invoiceId, amount, method, paymentDate, note } = body;
@@ -160,6 +161,19 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({ data: null, error: err.message || 'Failed to record payment' }, { status: 500 });
   }
+}
+
+// Recording a payment: limited per user, safe to repeat with the same Idempotency-Key, and it refreshes
+// the cached dashboard and invoice picker.
+export async function POST(req: NextRequest) {
+  if (!isStaff(req)) return forbidden();
+  const limited = await limitOr429(req, 'payment-record', 60, 60);
+  if (limited) return limited;
+  return idempotentJson(req, 'payments', async () => {
+    const res = await recordPayment(req);
+    if (res.status === 201) await invalidate('dashboard', 'lookups-invoices');
+    return res;
+  });
 }
 
 export async function GET(req: NextRequest) {

@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { InvoiceStatus, PaymentMethod, SubscriptionStatus } from '@prisma/client';
 import { prisma } from '../../shared/db';
 import { requireRole } from '../../shared/auth';
+import { cacheResponse } from '../../shared/redis/http';
+import { rateLimit } from '../../shared/redis/rateMiddleware';
 
 export const paymentsDashboardRouter = Router();
 
@@ -10,7 +12,7 @@ const fail = (res: Response, status: number, error: string) =>
 
 // GET /api/payments/dashboard - Finance Dashboard (R22)
 // Role: ADMIN or STAFF
-paymentsDashboardRouter.get('/', requireRole('ADMIN', 'STAFF'), async (req: Request, res: Response) => {
+paymentsDashboardRouter.get('/', requireRole('ADMIN', 'STAFF'), rateLimit({ name: 'dashboard', max: 120, windowSec: 60 }), cacheResponse('dashboard', 30), async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, method, customerId } = req.query;
 

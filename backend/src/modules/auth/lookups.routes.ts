@@ -4,9 +4,10 @@
 
 import { Router } from 'express';
 import { lookupsController } from './lookups.controller';
+import { cacheResponse } from '../../shared/redis/http';
 
 export const lookupsRouter = Router();
 
 // GET /api/lookups/customers?search=&limit=
-lookupsRouter.get('/customers', lookupsController.listCustomers);
+lookupsRouter.get('/customers', cacheResponse('lookups-customers', 30), lookupsController.listCustomers);
 

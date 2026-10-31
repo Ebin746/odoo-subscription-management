@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../shared/db';
+import { cacheResponse } from '../../shared/redis/http';
 
 export const lookupsRouter = Router();
 
 // GET /api/lookups/products
 // Returns [{ id, label }] for product pickers
-lookupsRouter.get('/products', async (_req: Request, res: Response) => {
+lookupsRouter.get('/products', cacheResponse('lookups-products', 30), async (_req: Request, res: Response) => {
   try {
     const products = await prisma.product.findMany({
       where: { isActive: true },
@@ -37,7 +38,7 @@ lookupsRouter.get('/products', async (_req: Request, res: Response) => {
 
 // GET /api/lookups/plans
 // Returns [{ id, label }] for plan pickers
-lookupsRouter.get('/plans', async (_req: Request, res: Response) => {
+lookupsRouter.get('/plans', cacheResponse('lookups-plans', 30), async (_req: Request, res: Response) => {
   try {
     const plans = await prisma.plan.findMany({
       where: { isActive: true },
@@ -63,7 +64,7 @@ lookupsRouter.get('/plans', async (_req: Request, res: Response) => {
 
 // GET /api/lookups/subscriptions
 // Returns [{ id, label }] for subscription pickers
-lookupsRouter.get('/subscriptions', async (_req: Request, res: Response) => {
+lookupsRouter.get('/subscriptions', cacheResponse('lookups-subscriptions', 30), async (_req: Request, res: Response) => {
   try {
     const subscriptions = await prisma.subscription.findMany({
       select: {

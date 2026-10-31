@@ -1,3 +1,4 @@
+import { forgetAuthUser } from '../../shared/redis/session';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
@@ -145,6 +146,7 @@ export const usersService = {
       select: safeUserSelect,
     });
 
+    await forgetAuthUser(id); // a deactivation or change applies to logged-in sessions right away
     return updated as SafeUser;
   },
 

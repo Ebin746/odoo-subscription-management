@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import { rateLimit } from '../../shared/redis/rateMiddleware';
 import { authController } from './auth.controller';
 import { requireAuth, requireRole } from '../../shared/auth';
 import {
@@ -13,21 +13,19 @@ import {
 
 export const authRoutes = Router();
 
-// Rate limiter for sensitive public endpoints (login, forgot-password)
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per 15 min window
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { data: null, error: 'Too many requests, please try again later.' },
-});
+// Rate limits on the public endpoints, counted in Redis so every server instance shares them
+// (per IP address). Tunable with AUTH_RATE_MAX for tests and busy deployments.
+const AUTH_MAX = Number(process.env.AUTH_RATE_MAX) || 100;
+const authLimiter = rateLimit({ name: 'auth', max: AUTH_MAX, windowSec: 15 * 60, message: 'Too many requests, please try again later.' });
+const signupLimiter = rateLimit({ name: 'signup', max: Math.max(5, Math.floor(AUTH_MAX / 2)), windowSec: 60 * 60, message: 'Too many sign-ups from this address, please try again later.' });
+const resetLimiter = rateLimit({ name: 'reset-password', max: Math.max(5, Math.floor(AUTH_MAX / 3)), windowSec: 15 * 60, message: 'Too many attempts, please try again later.' });
 
 // Public endpoints
-authRoutes.post('/signup', validateBody(signupSchema), authController.signup);
+authRoutes.post('/signup', signupLimiter, validateBody(signupSchema), authController.signup);
 authRoutes.post('/login', authLimiter, validateBody(loginSchema), authController.login);
 authRoutes.post('/logout', authController.logout);
 authRoutes.post('/forgot-password', authLimiter, validateBody(forgotPasswordSchema), authController.forgotPassword);
-authRoutes.post('/reset-password', validateBody(resetPasswordSchema), authController.resetPassword);
+authRoutes.post('/reset-password', resetLimiter, validateBody(resetPasswordSchema), authController.resetPassword);
 
 // Authenticated endpoints
 authRoutes.get('/me', requireAuth, authController.me);

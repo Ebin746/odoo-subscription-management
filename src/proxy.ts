@@ -4,6 +4,7 @@
 // (taxes, discounts, invoices, auth) checks the token itself.
 import { NextResponse, type NextRequest } from 'next/server';
 import { verifyToken, type SessionRole } from '@/lib/verifyToken';
+import { isTokenDenied } from '@backend/shared/redis/session';
 
 type Rule = SessionRole[] | 'any';
 
@@ -45,14 +46,17 @@ function ruleFor(pathname: string): Rule | null {
   return hit ? hit[1] : 'any';
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith('/api/');
   const rule = ruleFor(pathname);
   if (rule === null) return NextResponse.next();
 
   const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const user = verifyToken(request.cookies.get('auth_token')?.value || bearer);
+  const rawToken = request.cookies.get('auth_token')?.value || bearer;
+  let user = verifyToken(rawToken);
+  // A token that was logged out is dead even though its signature is still valid
+  if (user && rawToken && (await isTokenDenied(rawToken))) user = null;
 
   // Outside production the dev headers still work (same as the Express API) so scripts can call the routes.
   let role = user?.role;

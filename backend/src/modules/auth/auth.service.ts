@@ -102,7 +102,8 @@ export const authService = {
         email: user.email,
       },
       secret,
-      { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] }
+      // jwtid makes every token unique, so logging out and straight back in never reuses a denied token
+      { expiresIn: expiresIn as jwt.SignOptions['expiresIn'], jwtid: crypto.randomUUID() }
     );
 
     const safeUser: SafeUser = {

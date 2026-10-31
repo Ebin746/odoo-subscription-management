@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { InvoiceStatus, PaymentMethod, SubscriptionStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { cached } from '@backend/shared/redis/cache';
 import { PaymentsNav } from '@/components/payments/PaymentsNav';
 import {
   DollarSign,
@@ -60,7 +61,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
     overdueInvoicesAgg,
     recentPayments,
     criticalOverdueInvoices,
-  ] = await Promise.all([
+  ] = await cached('dashboard', `page:${JSON.stringify(params)}`, 30, () => Promise.all([
     prisma.subscription.count({
       where: {
         status: SubscriptionStatus.ACTIVE,
@@ -136,7 +137,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
         customer: { select: { id: true, name: true, email: true, phone: true } },
       },
     }),
-  ]);
+  ]));
 
   const totalRevenue = Number(paymentAggregate._sum.amount || 0);
   const totalPaymentsCount = paymentAggregate._count.id || 0;

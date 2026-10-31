@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { InvoiceStatus } from '@prisma/client';
 import { prisma } from '../../shared/db';
 import { requireAuth, requireRole } from '../../shared/auth';
+import { invalidate } from '../../shared/redis/cache';
+import { rateLimit } from '../../shared/redis/rateMiddleware';
 import { runBilling } from './billing';
 import { getActiveBillingRunId, getBillingRun, startQueuedBilling } from './billingRun';
 import { sendInvoiceEmailQueued } from './mailJobs';
@@ -87,7 +89,7 @@ invoicesRouter.get('/mine', requireAuth, async (req: Request, res: Response) => 
 
 // POST /api/invoices/run-billing - "Run billing now". With Redis the run is queued and answers 202 with a run id
 // to follow; without it the run happens here and the result comes back directly.
-invoicesRouter.post('/run-billing', requireRole('ADMIN', 'STAFF'), async (_req: Request, res: Response) => {
+invoicesRouter.post('/run-billing', requireRole('ADMIN', 'STAFF'), rateLimit({ name: 'run-billing', max: 10, windowSec: 60 }), async (_req: Request, res: Response) => {
   try {
     const started = await startQueuedBilling();
     if (started) {
@@ -95,6 +97,7 @@ invoicesRouter.post('/run-billing', requireRole('ADMIN', 'STAFF'), async (_req: 
       return;
     }
     const result = await runBilling();
+    await invalidate('lookups-invoices');
     res.json({ data: result, error: null });
   } catch (err: any) {
     fail(res, 500, err.message || 'Billing run failed');
@@ -143,6 +146,7 @@ invoicesRouter.post('/:id/confirm', requireRole('ADMIN', 'STAFF'), async (req: R
       const exists = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { status: true } });
       return fail(res, exists ? 409 : 404, exists ? `Only draft invoices can be confirmed (this one is ${exists.status})` : 'Invoice not found');
     }
+    await invalidate('dashboard', 'lookups-invoices');
     res.json({ data: await prisma.invoice.findUnique({ where: { id: req.params.id }, include: detailInclude }), error: null });
   } catch (err: any) {
     fail(res, 500, err.message || 'Failed to confirm invoice');
@@ -173,6 +177,7 @@ invoicesRouter.post('/:id/cancel', requireRole('ADMIN', 'STAFF'), async (req: Re
       return { status: 200, error: null };
     });
     if (outcome.error) return fail(res, outcome.status, outcome.error);
+    await invalidate('dashboard', 'lookups-invoices');
     res.json({ data: await prisma.invoice.findUnique({ where: { id: req.params.id }, include: detailInclude }), error: null });
   } catch (err: any) {
     fail(res, 500, err.message || 'Failed to cancel invoice');
@@ -181,7 +186,7 @@ invoicesRouter.post('/:id/cancel', requireRole('ADMIN', 'STAFF'), async (req: Re
 
 // POST /api/invoices/:id/send - Email the invoice (PDF attached) to the customer.
 // With Redis the email is queued (and retried if the mail server fails); the invoice is marked sent once it goes out.
-invoicesRouter.post('/:id/send', requireRole('ADMIN', 'STAFF'), async (req: Request, res: Response) => {
+invoicesRouter.post('/:id/send', requireRole('ADMIN', 'STAFF'), rateLimit({ name: 'invoice-send', max: 30, windowSec: 60 }), async (req: Request, res: Response) => {
   try {
     const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { id: true, status: true } });
     if (!invoice) return fail(res, 404, 'Invoice not found');
@@ -196,7 +201,7 @@ invoicesRouter.post('/:id/send', requireRole('ADMIN', 'STAFF'), async (req: Requ
 });
 
 // GET /api/invoices/:id/pdf - Print: PDF of the invoice (customers only for their own)
-invoicesRouter.get('/:id/pdf', requireAuth, async (req: Request, res: Response) => {
+invoicesRouter.get('/:id/pdf', requireAuth, rateLimit({ name: 'invoice-pdf', max: 60, windowSec: 60 }), async (req: Request, res: Response) => {
   try {
     const invoice = await loadVisibleInvoice(req, res);
     if (!invoice) return;

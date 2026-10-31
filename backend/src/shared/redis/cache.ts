@@ -68,3 +68,27 @@ export async function del(...keys: string[]): Promise<void> {
     /* ignore */
   }
 }
+
+// Lower-level read/write of one namespaced entry (used by the HTTP response cache).
+export async function getCachedRaw<T>(ns: string, key: string): Promise<T | null> {
+  const redis = redisIfReady();
+  if (!redis) return null;
+  try {
+    const ver = (await redis.get(verKey(ns))) || '0';
+    const hit = await redis.get(`cache:${ns}:${ver}:${key}`);
+    return hit === null ? null : (JSON.parse(hit) as T);
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedRaw(ns: string, key: string, value: unknown, ttlSec: number): Promise<void> {
+  const redis = redisIfReady();
+  if (!redis) return;
+  try {
+    const ver = (await redis.get(verKey(ns))) || '0';
+    await redis.set(`cache:${ns}:${ver}:${key}`, JSON.stringify(value), 'EX', ttlSec);
+  } catch {
+    /* ignore */
+  }
+}

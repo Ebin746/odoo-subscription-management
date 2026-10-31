@@ -88,8 +88,16 @@ export function useCurrentUser(): CurrentUser | null {
 
 export function logout(): void {
   if (typeof window !== 'undefined') {
-    clearAuthToken();
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = '/auth/login';
+    const finish = () => {
+      clearAuthToken();
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = '/auth/login';
+    };
+    // End the token on the server first (best effort), then clear it here
+    if (localStorage.getItem('auth_token')) {
+      apiFetch('/api/auth/logout', { method: 'POST' }).finally(finish);
+    } else {
+      finish();
+    }
   }
 }

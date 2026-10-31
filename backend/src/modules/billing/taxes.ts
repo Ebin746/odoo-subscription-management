@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../shared/db';
 import { requireAuth, requireRole } from '../../shared/auth';
+import { invalidate } from '../../shared/redis/cache';
 
 export const taxesRouter = Router();
 
@@ -71,6 +72,7 @@ taxesRouter.post('/', requireRole('ADMIN'), async (req: Request, res: Response) 
     const tax = await prisma.tax.create({
       data: { name: String(name).trim(), ratePercent: rate, isActive: isActive !== false },
     });
+    await invalidate('lookups-taxes');
     res.status(201).json({ data: tax, error: null });
   } catch (err: any) {
     res.status(500).json({ data: null, error: err.message || 'Failed to create tax' });
@@ -105,6 +107,7 @@ taxesRouter.put('/:id', requireRole('ADMIN'), async (req: Request, res: Response
     if (req.body.isActive !== undefined) data.isActive = Boolean(req.body.isActive);
 
     const tax = await prisma.tax.update({ where: { id: req.params.id }, data });
+    await invalidate('lookups-taxes');
     res.json({ data: tax, error: null });
   } catch (err: any) {
     res.status(500).json({ data: null, error: err.message || 'Failed to update tax' });
@@ -123,6 +126,7 @@ taxesRouter.delete('/:id', requireRole('ADMIN'), async (req: Request, res: Respo
       return;
     }
     await prisma.tax.delete({ where: { id: req.params.id } });
+    await invalidate('lookups-taxes');
     res.json({ data: { id: req.params.id }, error: null });
   } catch (err: any) {
     if (err.code === 'P2025') {

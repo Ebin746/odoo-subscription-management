@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -32,9 +32,14 @@ interface Props {
   availableInvoices: InvoiceLookupItem[];
 }
 
+// One key per payment attempt: if the same request is sent twice (double click, retry after a slow answer),
+// the server records it only once.
+const newKey = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
 export function RecordPaymentForm({ initialInvoiceId, availableInvoices }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const idempotencyKey = useRef(newKey());
 
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>(
     initialInvoiceId && availableInvoices.some((i) => i.id === initialInvoiceId)
@@ -97,7 +102,7 @@ export function RecordPaymentForm({ initialInvoiceId, availableInvoices }: Props
       try {
         const res = await fetch('/api/payments', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey.current },
           body: JSON.stringify({
             invoiceId: selectedInvoiceId,
             amount: payVal,
@@ -112,6 +117,7 @@ export function RecordPaymentForm({ initialInvoiceId, availableInvoices }: Props
           setError(json.error || 'Failed to record payment');
         } else {
           setSuccessData(json.data);
+          idempotencyKey.current = newKey(); // the next payment is a new attempt
           router.refresh();
         }
       } catch (err: any) {

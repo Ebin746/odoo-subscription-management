@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { redisIfReady } from '../../shared/redis/client';
+import { invalidate } from '../../shared/redis/cache';
 import { enqueue, registerHandler } from '../../shared/redis/queue';
 import { registerDailyJob } from '../../shared/scheduler';
 import { BillingResult, billChunk, runBilling, startOfUtcDay, subscriptionIdPages } from './billing';
@@ -75,6 +76,7 @@ async function finishIfComplete(runId: string): Promise<void> {
   const h = await redis.hmget(runKey(runId), 'listed', 'total', 'done', 'status');
   if (h[0] === '1' && h[3] === 'running' && Number(h[1]) === Number(h[2])) {
     await redis.hset(runKey(runId), 'status', 'done');
+    await invalidate('lookups-invoices');
     if ((await redis.get(ACTIVE_KEY)) === runId) await redis.del(ACTIVE_KEY);
     const s = await getBillingRun(runId);
     console.log(`[BillingJob] run ${runId.slice(0, 8)} done: ${s?.invoicesCreated} created, ${s?.skippedExisting} already billed, ${s?.failed.length} failed`);

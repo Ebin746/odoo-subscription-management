@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import { InvoiceStatus, PaymentMethod } from '@prisma/client';
 import { prisma } from '../../shared/db';
 import { requireAuth, requireRole } from '../../shared/auth';
+import { invalidate } from '../../shared/redis/cache';
+import { idempotentRoute } from '../../shared/redis/http';
+import { rateLimit } from '../../shared/redis/rateMiddleware';
 
 export const paymentsRouter = Router();
 
@@ -18,7 +21,7 @@ function paging(req: Request) {
 
 // POST /api/payments - Record a payment against an invoice (R20)
 // Role: ADMIN or STAFF
-paymentsRouter.post('/', requireRole('ADMIN', 'STAFF'), async (req: Request, res: Response) => {
+paymentsRouter.post('/', requireRole('ADMIN', 'STAFF'), rateLimit({ name: 'payment-record', max: 60, windowSec: 60 }), idempotentRoute('payments'), async (req: Request, res: Response) => {
   try {
     const { invoiceId, amount, method, paymentDate, note } = req.body;
 
@@ -136,6 +139,7 @@ paymentsRouter.post('/', requireRole('ADMIN', 'STAFF'), async (req: Request, res
       return fail(res, result.status || 400, result.error || 'Payment failed');
     }
 
+    await invalidate('dashboard', 'lookups-invoices');
     res.status(201).json({
       data: {
         payment: result.payment,

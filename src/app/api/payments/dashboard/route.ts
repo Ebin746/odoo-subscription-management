@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { InvoiceStatus, PaymentMethod, SubscriptionStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { cachedJson, limitOr429 } from '@/lib/redisHttp';
 
-export async function GET(req: NextRequest) {
+async function computeDashboard(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const startDate = searchParams.get('startDate');
@@ -209,3 +210,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Cached for 30 seconds per filter combination; recording a payment or changing an invoice clears it.
+export async function GET(req: NextRequest) {
+  const limited = await limitOr429(req, 'dashboard', 120, 60);
+  if (limited) return limited;
+  return cachedJson('dashboard', new URL(req.url).search, 30, () => computeDashboard(req));
+}

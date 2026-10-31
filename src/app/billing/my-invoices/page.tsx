@@ -2,11 +2,14 @@ import { prisma } from '@/lib/prisma';
 import { BillingNav } from '@/components/billing/BillingNav';
 import { StatusBadge } from '@/components/billing/StatusBadge';
 import { fmtDate, money } from '@/components/billing/format';
-import { Printer, UserCheck } from 'lucide-react';
+import { UserCheck } from 'lucide-react';
+import { getSessionUser } from '@/lib/session';
+import { PrintButton } from '@/components/billing/PrintButton';
 
 export default async function MyInvoicesPage() {
-  // Same demo customer as the subscriptions portal until real login is wired in.
-  const customer = await prisma.user.findFirst({ where: { email: 'customer@acmecorp.com' } });
+  // The logged-in customer (the proxy has already checked the login).
+  const session = await getSessionUser();
+  const customer = session ? await prisma.user.findUnique({ where: { id: session.id } }) : null;
 
   const invoices = customer
     ? await prisma.invoice.findMany({
@@ -27,7 +30,7 @@ export default async function MyInvoicesPage() {
               Customer Portal
             </span>
             <span className="text-xs text-slate-500">
-              Logged in as: <strong className="text-slate-300">{customer?.name || 'Acme Corp'}</strong>
+              Logged in as: <strong className="text-slate-300">{customer?.name || 'Guest'}</strong>
             </span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white mt-1 flex items-center gap-2">
@@ -70,14 +73,7 @@ export default async function MyInvoicesPage() {
                     <StatusBadge status={inv.status} />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <a
-                      href={`/api/invoices/${inv.id}/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-cyan-400 hover:underline"
-                    >
-                      <Printer className="w-4 h-4" /> Print
-                    </a>
+                    <PrintButton invoiceId={inv.id} className="inline-flex items-center gap-1 text-cyan-400 hover:underline" />
                   </td>
                 </tr>
               ))}

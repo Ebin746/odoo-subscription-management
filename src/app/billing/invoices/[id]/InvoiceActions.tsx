@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, XCircle, Send, Printer } from 'lucide-react';
+import { CheckCircle2, XCircle, Send } from 'lucide-react';
 import { api } from '@/components/billing/api';
+import { PrintButton } from '@/components/billing/PrintButton';
 
 export function InvoiceActions({ id, status }: { id: string; status: string }) {
   const router = useRouter();
@@ -45,9 +46,7 @@ export function InvoiceActions({ id, status }: { id: string; status: string }) {
             <Send className="w-4 h-4" /> {busy === 'send' ? 'Sending...' : 'Send'}
           </button>
         )}
-        <a href={`/api/invoices/${id}/pdf`} target="_blank" rel="noreferrer" className={`${btn} bg-slate-800 hover:bg-slate-700 text-white`}>
-          <Printer className="w-4 h-4" /> Print
-        </a>
+        <PrintButton invoiceId={id} className={`${btn} bg-slate-800 hover:bg-slate-700 text-white`} />
       </div>
       {message && <span className={`text-xs ${message.ok ? 'text-emerald-400' : 'text-rose-400'}`}>{message.text}</span>}
     </div>

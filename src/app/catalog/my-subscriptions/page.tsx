@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { getSessionUser } from '@/lib/session';
 import { CatalogNav } from '@/components/catalog/CatalogNav';
 import { UserCheck, Shield, Repeat, Clock } from 'lucide-react';
 import { CustomerSubCard } from './CustomerSubCard';
@@ -7,10 +8,9 @@ import { CustomerSubCard } from './CustomerSubCard';
 export const dynamic = 'force-dynamic';
 
 export default async function MySubscriptionsPage() {
-  // Query customer subscriptions for the demo customer (Acme Corp)
-  const customer = await prisma.user.findFirst({
-    where: { email: 'customer@acmecorp.com' },
-  });
+  // The logged-in customer (the proxy has already checked the login)
+  const session = await getSessionUser();
+  const customer = session ? await prisma.user.findUnique({ where: { id: session.id } }) : null;
 
   const subscriptions = customer
     ? await prisma.subscription.findMany({

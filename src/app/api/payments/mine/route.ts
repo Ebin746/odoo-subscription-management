@@ -8,12 +8,8 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')));
     const skip = (page - 1) * limit;
 
-    // In demo/dev mode, check dev user id header or first customer
-    let customerId = req.headers.get('x-dev-user-id');
-    if (!customerId) {
-      const demoCustomer = await prisma.user.findFirst({ where: { role: 'CUSTOMER' } });
-      customerId = demoCustomer?.id || 'demo-customer-id';
-    }
+    // The proxy sets x-dev-user-id from the verified login token.
+    const customerId = req.headers.get('x-dev-user-id') || '00000000-0000-0000-0000-000000000000';
 
     const where = {
       invoice: { customerId },

@@ -10,6 +10,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 export interface ApiResponse<T> {
   data: T | null;
   error: string | null;
+  status?: number; // HTTP status; absent when the request never reached the server
 }
 
 export async function apiFetch<T>(
@@ -30,7 +31,7 @@ export async function apiFetch<T>(
   try {
     const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
     const json: ApiResponse<T> = await res.json();
-    return json;
+    return { ...json, status: res.status };
   } catch {
     return { data: null, error: 'Network error — could not reach the server.' };
   }

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { InvoiceStatus, PaymentMethod } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { getSessionUser } from '@/lib/session';
 import { PaymentsNav } from '@/components/payments/PaymentsNav';
 import {
   UserCheck,
@@ -28,11 +29,14 @@ export default async function CustomerMyPaymentsPage({ searchParams }: Props) {
   const limit = 20;
   const skip = (page - 1) * limit;
 
-  // In production, uses auth session. In demo/dev mode, fetch first customer
-  const customer = await prisma.user.findFirst({
-    where: { role: 'CUSTOMER' },
-    select: { id: true, name: true, email: true, companyName: true },
-  });
+  // The logged-in customer (the proxy has already checked the login)
+  const session = await getSessionUser();
+  const customer = session
+    ? await prisma.user.findUnique({
+        where: { id: session.id },
+        select: { id: true, name: true, email: true, companyName: true },
+      })
+    : null;
 
   const customerId = customer?.id || 'demo-customer-id';
 

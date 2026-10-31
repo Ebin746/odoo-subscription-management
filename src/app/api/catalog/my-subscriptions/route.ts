@@ -3,16 +3,8 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
-    const customerHeader = req.headers.get('x-dev-user-id');
-    let customerId = customerHeader;
-
-    if (!customerId) {
-      // Default to demo customer in DB for easy review/testing
-      const demoCustomer = await prisma.user.findFirst({
-        where: { email: 'customer@acmecorp.com' },
-      });
-      customerId = demoCustomer?.id || null;
-    }
+    // The proxy sets x-dev-user-id from the verified login token.
+    const customerId = req.headers.get('x-dev-user-id');
 
     if (!customerId) {
       return NextResponse.json({ data: [], error: null });

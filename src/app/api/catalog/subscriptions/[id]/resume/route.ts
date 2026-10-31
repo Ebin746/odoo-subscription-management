@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { mayActOn } from '@/lib/ownership';
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
     const sub = await prisma.subscription.findUnique({ where: { id } });
 
-    if (!sub) {
+    if (!sub || !mayActOn(req, sub.customerId)) {
       return NextResponse.json({ data: null, error: 'Subscription not found' }, { status: 404 });
     }
 

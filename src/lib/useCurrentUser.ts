@@ -71,7 +71,8 @@ export function useCurrentUser(): CurrentUser | null {
     const res = await apiFetch<CurrentUser>('/api/auth/me');
     if (res.data) {
       setUser(res.data);
-    } else {
+    } else if (res.status === 401) {
+      // Only a rejected token means the session is over; a network hiccup or an aborted request must not log the user out.
       clearAuthToken();
       setUser(null);
     }

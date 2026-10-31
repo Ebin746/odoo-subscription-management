@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 
 
+export const dynamic = 'force-dynamic';
+
 export default async function CatalogDashboard() {
   const [productCount, planCount, templateCount, totalSubs, activeSubs, quotationSubs] = await Promise.all([
     prisma.product.count({ where: { isActive: true } }),

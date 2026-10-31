@@ -5,6 +5,8 @@ import { StartQuoteButton } from './StartQuoteButton';
 import { TemplateModal } from './TemplateModal';
 
 
+export const dynamic = 'force-dynamic';
+
 export default async function QuotationTemplatesPage() {
   const [templates, plans, products, customers] = await Promise.all([
     prisma.quotationTemplate.findMany({

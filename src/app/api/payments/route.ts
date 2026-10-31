@@ -2,13 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { InvoiceStatus, PaymentMethod } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Dev auth stub, same rule as backend/src/shared/auth.ts: role comes from x-dev-role (default ADMIN)
+// until real login replaces it. Recording and listing payments is staff/admin only.
+function isStaff(req: NextRequest): boolean {
+  const role = (req.headers.get('x-dev-role') || 'ADMIN').toUpperCase();
+  return role === 'ADMIN' || role === 'STAFF';
+}
+
+const forbidden = () =>
+  NextResponse.json({ data: null, error: 'Forbidden: insufficient role privileges' }, { status: 403 });
+
 export async function POST(req: NextRequest) {
+  if (!isStaff(req)) return forbidden();
   try {
     const body = await req.json();
     const { invoiceId, amount, method, paymentDate, note } = body;
 
     if (!invoiceId) {
       return NextResponse.json({ data: null, error: 'invoiceId is required' }, { status: 400 });
+    }
+    if (!UUID.test(String(invoiceId))) {
+      return NextResponse.json({ data: null, error: 'Invoice not found' }, { status: 404 });
     }
 
     const payAmount = Number(amount);
@@ -33,6 +49,8 @@ export async function POST(req: NextRequest) {
 
     // Execute in transaction
     const result = await prisma.$transaction(async (tx) => {
+      // Lock the invoice row so two simultaneous payments are checked one after the other
+      await tx.$queryRaw`SELECT "id" FROM "Invoice" WHERE "id" = ${invoiceId}::uuid FOR UPDATE`;
       const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
       });
@@ -113,6 +131,8 @@ export async function POST(req: NextRequest) {
           amountPaid: newAmountPaid,
           status: isFullyPaid ? InvoiceStatus.PAID : InvoiceStatus.CONFIRMED,
           paidAt: isFullyPaid ? new Date() : undefined,
+          // A payment on a draft invoice confirms it
+          confirmedAt: invoice.confirmedAt ?? new Date(),
         },
       });
 
@@ -143,6 +163,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  if (!isStaff(req)) return forbidden();
   try {
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));

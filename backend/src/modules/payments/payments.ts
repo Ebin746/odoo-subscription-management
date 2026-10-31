@@ -5,6 +5,8 @@ import { requireAuth, requireRole } from '../../shared/auth';
 
 export const paymentsRouter = Router();
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const fail = (res: Response, status: number, error: string) =>
   res.status(status).json({ data: null, error });
 
@@ -22,6 +24,9 @@ paymentsRouter.post('/', requireRole('ADMIN', 'STAFF'), async (req: Request, res
 
     if (!invoiceId) {
       return fail(res, 400, 'invoiceId is required');
+    }
+    if (!UUID.test(String(invoiceId))) {
+      return fail(res, 404, 'Invoice not found');
     }
 
     const payAmount = Number(amount);
@@ -46,6 +51,8 @@ paymentsRouter.post('/', requireRole('ADMIN', 'STAFF'), async (req: Request, res
 
     // Execute payment and invoice update atomically in a transaction
     const result = await prisma.$transaction(async (tx) => {
+      // Lock the invoice row so two simultaneous payments are checked one after the other
+      await tx.$queryRaw`SELECT "id" FROM "Invoice" WHERE "id" = ${invoiceId}::uuid FOR UPDATE`;
       const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
         include: { customer: { select: { id: true, name: true, email: true } } },
@@ -113,6 +120,8 @@ paymentsRouter.post('/', requireRole('ADMIN', 'STAFF'), async (req: Request, res
           amountPaid: newAmountPaid,
           status: isFullyPaid ? InvoiceStatus.PAID : InvoiceStatus.CONFIRMED,
           paidAt: isFullyPaid ? new Date() : undefined,
+          // A payment on a draft invoice confirms it
+          confirmedAt: invoice.confirmedAt ?? new Date(),
         },
       });
 
@@ -274,6 +283,9 @@ paymentsRouter.get('/mine', requireAuth, async (req: Request, res: Response) => 
 // GET /api/payments/:id - Get single payment details
 paymentsRouter.get('/:id', requireAuth, async (req: Request, res: Response) => {
   try {
+    if (!UUID.test(req.params.id)) {
+      return fail(res, 404, 'Payment not found');
+    }
     const payment = await prisma.payment.findUnique({
       where: { id: req.params.id },
       include: {

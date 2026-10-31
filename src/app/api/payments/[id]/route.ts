@@ -7,6 +7,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return NextResponse.json({ data: null, error: 'Payment not found' }, { status: 404 });
+    }
     const payment = await prisma.payment.findUnique({
       where: { id },
       include: {

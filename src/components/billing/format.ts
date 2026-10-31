@@ -1,4 +1,7 @@
-export const money = (v: number | string | null | undefined) => `$${Number(v ?? 0).toFixed(2)}`;
+export const money = (v: number | string | null | undefined) => {
+  const n = Number(v ?? 0);
+  return `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
+};
 
 export const fmtDate = (v: string | Date | null | undefined) => (v ? new Date(v).toISOString().slice(0, 10) : '-');
 

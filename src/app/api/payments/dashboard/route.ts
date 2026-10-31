@@ -208,3 +208,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: null, error: err.message || 'Failed to fetch finance dashboard' }, { status: 500 });
   }
 }
+

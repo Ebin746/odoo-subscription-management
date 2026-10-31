@@ -372,3 +372,4 @@ export function RecordPaymentForm({ initialInvoiceId, availableInvoices }: Props
     </form>
   );
 }
+

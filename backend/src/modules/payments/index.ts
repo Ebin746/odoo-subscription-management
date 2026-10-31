@@ -11,3 +11,4 @@ paymentsModuleRouter.use('/invoices', paymentsInvoicesRouter);
 paymentsModuleRouter.use('/', paymentsRouter);
 
 export { paymentsRouter, paymentsInvoicesRouter, paymentsDashboardRouter };
+

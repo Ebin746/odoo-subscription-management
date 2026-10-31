@@ -226,3 +226,4 @@ paymentsDashboardRouter.get('/', requireRole('ADMIN', 'STAFF'), async (req: Requ
     fail(res, 500, err.message || 'Failed to fetch finance dashboard');
   }
 });
+

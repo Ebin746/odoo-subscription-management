@@ -168,3 +168,4 @@ paymentsInvoicesRouter.get('/overview', requireRole('ADMIN', 'STAFF'), async (re
     fail(res, 500, err.message || 'Failed to fetch invoices overview');
   }
 });
+
